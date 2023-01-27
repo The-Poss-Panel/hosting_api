@@ -31,7 +31,7 @@ pub async fn modify(
     form: web::Json<Form>,
 ) -> impl Responder {
     let server: Option<Server> = client.select(("servers", id.to_string())).await.unwrap();
-    if let Some(_) = server {
+    if server.is_some() {
         let _server: Server = client
             .update(("servers", id.to_string()))
             .merge(json!({
