@@ -1,0 +1,8 @@
+version: "3"
+services:
+  sftp:
+    image: "emberstack/sftp"
+    ports:
+      - "22:22"
+    volumes:
+      - 4f9c916257e2b1833c5a70bc4bffa507a2e60253e4048976868279c979de1001:/thirsty_morse
