@@ -10,7 +10,7 @@ use surrealdb_rs::Surreal;
 #[derive(Serialize, Deserialize)]
 pub struct Form {
     pub image: String,
-    pub alias: Option<String>,
+    pub alias: String,
     pub ports: Option<Vec<PortBinding>>,
 }
 
@@ -59,7 +59,11 @@ pub async fn create(
                     .content(Application {
                         id: application_id.clone(),
                         image: form.image.clone(),
-                        alias: form.alias.clone().unwrap_or("Default".to_string()),
+                        alias: if form.alias.clone().is_empty() {
+                            "default".to_string()
+                        } else {
+                            form.alias.clone()
+                        },
                         owner: "MoskalykA".into(),
                         server: id.clone(),
                         ports: Some(form.ports.clone().unwrap()),
