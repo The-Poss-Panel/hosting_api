@@ -52,6 +52,7 @@ async fn main() -> std::io::Result<()> {
             .service(server::modify)
             .service(servers::get)
             .service(image::download)
+            .service(image::version)
             .service(images::get)
     })
     .bind(("127.0.0.1", 8081))?

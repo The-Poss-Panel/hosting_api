@@ -6,13 +6,12 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use surrealdb_rs::net::WsClient;
 use surrealdb_rs::Surreal;
-use ulid::Ulid;
 
 #[derive(Serialize, Deserialize)]
 pub struct Form {
-    name: String,
-    image: String,
-    ports: Option<Vec<PortBinding>>,
+    pub image: String,
+    pub alias: Option<String>,
+    pub ports: Option<Vec<PortBinding>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -54,12 +53,13 @@ pub async fn create(
                 HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
             }
             StatusCode::OK => {
-                let _application: Application = surreal
+                let application_id: String = res.json().await.unwrap();
+                let application: Application = surreal
                     .create("applications")
                     .content(Application {
-                        id: Ulid::new().to_string(),
-                        name: form.name.clone(),
+                        id: application_id.clone(),
                         image: form.image.clone(),
+                        alias: form.alias.clone().unwrap_or("Default".to_string()),
                         owner: "MoskalykA".into(),
                         server: id.clone(),
                         ports: Some(form.ports.clone().unwrap()),
@@ -67,9 +67,12 @@ pub async fn create(
                     .await
                     .unwrap();
 
-                HttpResponse::Ok().json(res.json::<Response>().await.unwrap())
+                HttpResponse::Ok().json(Response {
+                    error: false,
+                    message: format!("The application {application_id} has been created"),
+                })
             }
-            _ => HttpResponse::Ok().json(res.json::<Response>().await.unwrap()),
+            _ => unimplemented!(),
         }
     } else {
         HttpResponse::NotFound().json(Response {
@@ -97,7 +100,7 @@ pub async fn actions(
             let res = client
                 .post(format!(
                     "http://{}:{}/application/{}/actions",
-                    server.ip, server.port, application.name
+                    server.ip, server.port, application.image
                 ))
                 .json(&form)
                 .send()
@@ -119,7 +122,7 @@ pub async fn actions(
     } else {
         return HttpResponse::NotFound().json(Response {
             error: true,
-            message: format!("The {} application does not exist", id),
+            message: format!("The {id} application does not exist"),
         });
     }
 }

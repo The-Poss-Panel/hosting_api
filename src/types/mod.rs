@@ -26,8 +26,8 @@ impl Server {
 #[derive(Serialize, Deserialize)]
 pub struct Application {
     pub id: String,
-    pub name: String,
     pub image: String,
+    pub alias: String,
     pub owner: String,
     pub server: String,
     pub ports: Option<Vec<PortBinding>>,
