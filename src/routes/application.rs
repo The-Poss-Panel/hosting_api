@@ -4,8 +4,8 @@ use bollard::service::PortBinding;
 use hosting_types::Response;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use surrealdb_rs::net::WsClient;
-use surrealdb_rs::Surreal;
+use surrealdb::engine::remote::ws::Client;
+use surrealdb::Surreal;
 
 #[derive(Serialize, Deserialize)]
 pub struct Form {
@@ -20,7 +20,7 @@ pub struct Actions {
 }
 
 #[get("/application/{id}")]
-pub async fn find(client: web::Data<Surreal<WsClient>>, id: web::Path<String>) -> impl Responder {
+pub async fn find(client: web::Data<Surreal<Client>>, id: web::Path<String>) -> impl Responder {
     let application: Option<Application> = client
         .select(("applications", id.to_string()))
         .await
@@ -34,7 +34,7 @@ pub async fn find(client: web::Data<Surreal<WsClient>>, id: web::Path<String>) -
 
 #[post("/application/{id}")]
 pub async fn create(
-    surreal: web::Data<Surreal<WsClient>>,
+    surreal: web::Data<Surreal<Client>>,
     id: web::Path<String>,
     form: web::Json<Form>,
 ) -> impl Responder {
@@ -88,7 +88,7 @@ pub async fn create(
 
 #[post("/application/{id}/actions")]
 pub async fn actions(
-    client: web::Data<Surreal<WsClient>>,
+    client: web::Data<Surreal<Client>>,
     id: web::Path<String>,
     form: web::Json<Actions>,
 ) -> impl Responder {

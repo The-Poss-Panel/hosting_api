@@ -7,16 +7,14 @@ use routes::{application, applications, image, images, server, servers};
 mod types;
 
 use actix_web::{web, App, HttpServer};
-use surrealdb_rs::param::Root;
-use surrealdb_rs::protocol::Ws;
-use surrealdb_rs::Surreal;
+use surrealdb::{Surreal, engine::remote::ws::Ws, opt::auth::Root};
 use types::Server;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();
 
-    let client = Surreal::connect::<Ws>("localhost:8000").await.unwrap();
+    let client = Surreal::new::<Ws>("localhost:8000").await.unwrap();
     client
         .signin(Root {
             username: "root",

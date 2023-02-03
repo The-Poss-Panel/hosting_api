@@ -3,11 +3,11 @@ use actix_web::{get, web, HttpResponse, Responder};
 use bollard::service::ImageSummary;
 use hosting_types::Response;
 use reqwest::StatusCode;
-use surrealdb_rs::net::WsClient;
-use surrealdb_rs::Surreal;
+use surrealdb::engine::remote::ws::Client;
+use surrealdb::Surreal;
 
 #[get("/images/{id}")]
-pub async fn get(client: web::Data<Surreal<WsClient>>, id: web::Path<String>) -> impl Responder {
+pub async fn get(client: web::Data<Surreal<Client>>, id: web::Path<String>) -> impl Responder {
     let server: Option<Server> = client.select(("servers", id.to_string())).await.unwrap();
     if let Some(server) = server {
         let client = reqwest::Client::new();

@@ -3,8 +3,8 @@ use actix_web::{get, post, web, HttpResponse, Responder};
 use hosting_types::Response;
 use serde::Deserialize;
 use serde_json::json;
-use surrealdb_rs::net::WsClient;
-use surrealdb_rs::Surreal;
+use surrealdb::engine::remote::ws::Client;
+use surrealdb::Surreal;
 
 #[derive(Deserialize)]
 pub struct Form {
@@ -12,7 +12,7 @@ pub struct Form {
 }
 
 #[get("/server/{id}")]
-pub async fn find(client: web::Data<Surreal<WsClient>>, id: web::Path<String>) -> impl Responder {
+pub async fn find(client: web::Data<Surreal<Client>>, id: web::Path<String>) -> impl Responder {
     let server: Option<Server> = client.select(("servers", id.to_string())).await.unwrap();
     if let Some(server) = server {
         HttpResponse::Ok().json(&server)
@@ -26,7 +26,7 @@ pub async fn find(client: web::Data<Surreal<WsClient>>, id: web::Path<String>) -
 
 #[post("/server/{id}")]
 pub async fn modify(
-    client: web::Data<Surreal<WsClient>>,
+    client: web::Data<Surreal<Client>>,
     id: web::Path<String>,
     form: web::Json<Form>,
 ) -> impl Responder {

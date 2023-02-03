@@ -3,8 +3,8 @@ use actix_web::{get, post, web, HttpResponse, Responder};
 use hosting_types::Response;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use surrealdb_rs::net::WsClient;
-use surrealdb_rs::Surreal;
+use surrealdb::engine::remote::ws::Client;
+use surrealdb::Surreal;
 
 #[derive(Deserialize, Serialize)]
 pub struct Form {
@@ -14,7 +14,7 @@ pub struct Form {
 
 #[post("/image/{id}")]
 pub async fn download(
-    client: web::Data<Surreal<WsClient>>,
+    client: web::Data<Surreal<Client>>,
     id: web::Path<String>,
     form: web::Json<Form>,
 ) -> impl Responder {
@@ -51,7 +51,7 @@ pub async fn download(
 
 #[get("/image/{id}/version/{name}")]
 pub async fn version(
-    client: web::Data<Surreal<WsClient>>,
+    client: web::Data<Surreal<Client>>,
     param: web::Path<(String, String)>,
 ) -> impl Responder {
     let server: Option<Server> = client.select(("servers", param.0.clone())).await.unwrap();
