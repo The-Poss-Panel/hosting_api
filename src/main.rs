@@ -7,7 +7,7 @@ use routes::{application, applications, image, images, server, servers};
 mod types;
 
 use actix_web::{web, App, HttpServer};
-use surrealdb::{Surreal, engine::remote::ws::Ws, opt::auth::Root};
+use surrealdb::{engine::remote::ws::Ws, opt::auth::Root, Surreal};
 use types::Server;
 
 #[actix_web::main]
