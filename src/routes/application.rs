@@ -118,15 +118,15 @@ pub async fn actions(
                 _ => HttpResponse::Ok().json(res.json::<Response>().await.unwrap()),
             }
         } else {
-            return HttpResponse::NotFound().json(Response {
+            HttpResponse::NotFound().json(Response {
                 error: true,
                 message: format!("The {} server does not exist", application.server),
-            });
+            })
         }
     } else {
-        return HttpResponse::NotFound().json(Response {
+        HttpResponse::NotFound().json(Response {
             error: true,
             message: format!("The {id} application does not exist"),
-        });
+        })
     }
 }
