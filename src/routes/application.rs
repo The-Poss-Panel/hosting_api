@@ -104,7 +104,7 @@ pub async fn actions(
             let res = client
                 .post(format!(
                     "http://{}:{}/application/{}/actions",
-                    server.ip, server.port, application.image
+                    server.ip, server.port, id
                 ))
                 .json(&form)
                 .send()
