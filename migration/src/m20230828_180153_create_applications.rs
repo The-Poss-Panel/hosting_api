@@ -13,10 +13,10 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Application::Id)
-                            .integer()
-                            .not_null()
-                            .auto_increment()
-                            .primary_key(),
+                            .string()
+                            .unique_key()
+                            .primary_key()
+                            .not_null(),
                     )
                     .col(ColumnDef::new(Application::Image).string().not_null())
                     .col(ColumnDef::new(Application::Alias).string().not_null())

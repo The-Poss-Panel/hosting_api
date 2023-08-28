@@ -1431,6 +1431,7 @@ dependencies = [
  "bollard",
  "entity",
  "env_logger",
+ "futures-util",
  "hosting_types",
  "log",
  "migration",

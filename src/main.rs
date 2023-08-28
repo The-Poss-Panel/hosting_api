@@ -1,18 +1,20 @@
 mod routes;
 
+use std::collections::HashMap;
+
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
-use bollard::Docker;
-use entity::prelude::*;
+use bollard::{Docker, API_DEFAULT_VERSION};
+use entity::prelude::Servers;
 use env_logger::Builder;
 use log::LevelFilter;
 use routes::{application, applications, image, images, server, servers};
-use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
-use std::collections::HashMap;
+use sea_orm::{Database, DatabaseConnection, EntityTrait};
 
 #[derive(Clone)]
 pub struct State {
     db: DatabaseConnection,
+    servers: HashMap<u32, Docker>,
 }
 
 #[actix_web::main]
@@ -24,33 +26,26 @@ async fn main() -> std::io::Result<()> {
             .await
             .unwrap();
 
-    Applications::delete_many().exec(&db).await.unwrap();
-
-    Servers::delete_many().exec(&db).await.unwrap();
-
-    entity::servers::ActiveModel {
-        ip: Set("127.0.0.1".to_string()),
-        port: Set(8082),
-        name: Set("test".to_string()),
-        owner: Set("MoskalykA".to_string()),
-        ..Default::default()
+    let mut servers: HashMap<u32, Docker> = HashMap::new();
+    let s = Servers::find().all(&db).await.unwrap();
+    for (index, server) in s.iter().enumerate() {
+        let a: u32 = index.try_into().unwrap();
+        servers.insert(
+            a + 1,
+            Docker::connect_with_http(
+                &format!("tcp://{}:{}", &server.ip, &server.port),
+                4,
+                API_DEFAULT_VERSION,
+            )
+            .unwrap(),
+        );
     }
-    .insert(&db)
-    .await
-    .unwrap();
 
-    let mut servers: HashMap<String, Docker> = HashMap::new();
-    servers.insert(
-        "test".to_string(),
-        Docker::connect_with_local_defaults().unwrap(),
-    );
-
-    let state = State { db };
+    let state = State { db, servers };
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
             .app_data(web::Data::new(state.clone()))
-            .app_data(web::Data::new(servers.clone()))
             .service(application::find)
             .service(application::create)
             .service(application::actions)

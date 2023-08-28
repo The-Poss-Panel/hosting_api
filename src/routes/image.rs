@@ -1,9 +1,8 @@
 use crate::State;
 use actix_web::{get, post, web, HttpResponse, Responder};
-use entity::prelude::Servers;
+use bollard::image::CreateImageOptions;
+use futures_util::TryStreamExt;
 use hosting_types::Response;
-use reqwest::StatusCode;
-use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -15,75 +14,69 @@ pub struct Form {
 #[post("/image/{id}")]
 pub async fn download(
     state: web::Data<State>,
-    path: web::Path<i32>,
+    path: web::Path<u32>,
     form: web::Json<Form>,
 ) -> impl Responder {
     let id = path.into_inner();
-    let server = Servers::find_by_id(id).one(&state.db).await.unwrap();
-
-    if let Some(server) = server {
-        let client = reqwest::Client::new();
-        let res = client
-            .post(format!("http://{}:{}/image", server.ip, server.port))
-            .json::<Form>(&form)
-            .send()
-            .await
-            .unwrap();
-
-        match res.status() {
-            StatusCode::FOUND => {
-                HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
-            }
-            StatusCode::NOT_FOUND => {
-                HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
-            }
-            StatusCode::OK => HttpResponse::Ok().json(res.json::<Response>().await.unwrap()),
-            _ => HttpResponse::NotFound().json(Response {
+    let server = match state.servers.get(&id) {
+        Some(s) => s,
+        None => {
+            return HttpResponse::NotFound().json(Response {
                 error: true,
-                message: "This protocol does not exist".into(),
-            }),
+                message: "The server does not exist".into(),
+            });
         }
-    } else {
-        HttpResponse::NotFound().json(Response {
+    };
+
+    if server.inspect_image(&form.name).await.is_ok() {
+        return HttpResponse::Found().json(Response {
             error: true,
-            message: "The server does not exist".into(),
-        })
+            message: "The image has already been downloaded".into(),
+        });
+    };
+
+    match server
+        .create_image(
+            Some(CreateImageOptions::<String> {
+                from_image: form.name.clone(),
+                tag: form.version.clone().unwrap_or_else(|| "latest".to_string()),
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .try_collect::<Vec<_>>()
+        .await
+    {
+        Ok(_) => HttpResponse::Ok().json(Response {
+            error: false,
+            message: "The image to be downloaded".into(),
+        }),
+        Err(_) => HttpResponse::NotFound().json(Response {
+            error: true,
+            message: "There is an error when downloading the image".into(),
+        }),
     }
 }
 
 #[get("/image/{id}/version/{name}")]
-pub async fn version(state: web::Data<State>, path: web::Path<(i32, String)>) -> impl Responder {
+pub async fn version(state: web::Data<State>, path: web::Path<(u32, String)>) -> impl Responder {
     let (id, name) = path.into_inner();
-    let server = Servers::find_by_id(id).one(&state.db).await.unwrap();
-
-    if let Some(server) = server {
-        let client = reqwest::Client::new();
-        let res = client
-            .get(format!(
-                "http://{}:{}/image/{}/version",
-                server.ip, server.port, name
-            ))
-            .send()
-            .await
-            .unwrap();
-
-        match res.status() {
-            StatusCode::FOUND => {
-                HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
-            }
-            StatusCode::NOT_FOUND => {
-                HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
-            }
-            StatusCode::OK => HttpResponse::Ok().json(res.json::<Vec<String>>().await.unwrap()),
-            _ => HttpResponse::NotFound().json(Response {
+    let server = match state.servers.get(&id) {
+        Some(s) => s,
+        None => {
+            return HttpResponse::NotFound().json(Response {
                 error: true,
-                message: "This protocol does not exist".into(),
-            }),
+                message: "The server does not exist".into(),
+            });
         }
-    } else {
-        HttpResponse::NotFound().json(Response {
-            error: true,
-            message: "The server does not exist".into(),
-        })
+    };
+
+    match server.inspect_image(&name).await {
+        Ok(images) => HttpResponse::Ok().json(images.repo_tags.unwrap_or_default()),
+        Err(_) => HttpResponse::NotFound().json(Response {
+            error: false,
+            message: "Image recovery does not work".into(),
+        }),
     }
 }

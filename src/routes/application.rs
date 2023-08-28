@@ -1,14 +1,14 @@
 use crate::State;
 use actix_web::{get, post, web, HttpResponse, Responder};
-use bollard::service::PortBinding;
-use entity::{
-    applications,
-    prelude::{Applications, Servers},
+use bollard::{
+    container::{Config, CreateContainerOptions, InspectContainerOptions, StartContainerOptions},
+    service::{HostConfig, PortBinding},
 };
+use entity::{applications, prelude::Applications};
 use hosting_types::Response;
-use reqwest::StatusCode;
 use sea_orm::{EntityTrait, Set};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
 pub struct Form {
@@ -23,7 +23,7 @@ pub struct Actions {
 }
 
 #[get("/application/{id}")]
-pub async fn find(state: web::Data<State>, path: web::Path<i32>) -> impl Responder {
+pub async fn find(state: web::Data<State>, path: web::Path<String>) -> impl Responder {
     let id = path.into_inner();
     let application = Applications::find_by_id(id)
         .into_json()
@@ -41,98 +41,164 @@ pub async fn find(state: web::Data<State>, path: web::Path<i32>) -> impl Respond
 #[post("/application/{id}")]
 pub async fn create(
     state: web::Data<State>,
-    path: web::Path<i32>,
+    path: web::Path<u32>,
     form: web::Json<Form>,
 ) -> impl Responder {
     let id = path.into_inner();
-    let server = Servers::find_by_id(id).one(&state.db).await.unwrap();
+    let server = match state.servers.get(&id) {
+        Some(s) => s,
+        None => {
+            return HttpResponse::NotFound().json(Response {
+                error: true,
+                message: "The server does not exist".into(),
+            });
+        }
+    };
 
-    if let Some(server) = server {
-        let client = reqwest::Client::new();
-        let res = client
-            .post(format!("http://{}:{}/application", server.ip, server.port))
-            .json(&form)
-            .send()
+    let split: Vec<&str> = form.image.split(':').collect::<Vec<&str>>();
+    let name = split.first().unwrap();
+    match server.inspect_image(name).await {
+        Ok(_) => {}
+        Err(_) => {
+            return HttpResponse::NotFound().json(Response {
+                error: true,
+                message: "The image has not been downloaded".into(),
+            })
+        }
+    };
+
+    let port_bindings = if let Some(ports) = &form.ports {
+        let mut port_bindings = HashMap::new();
+        port_bindings.insert(String::from("80/tcp"), Some(ports.to_vec()));
+
+        Some(port_bindings)
+    } else {
+        None
+    };
+
+    match server
+        .create_container(
+            Some(CreateContainerOptions {
+                name: form.alias.clone(),
+                platform: None,
+            }),
+            Config::<String> {
+                image: Some(form.image.clone()),
+                host_config: Some(HostConfig {
+                    port_bindings,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+    {
+        Ok(c) => {
+            //info!("The {} container has just been created", c.id);
+
+            let _ = Applications::insert(applications::ActiveModel {
+                id: Set(c.id.clone()),
+                image: Set(form.image.clone()),
+                alias: Set(if form.alias.clone().is_empty() {
+                    "default".to_string()
+                } else {
+                    form.alias.clone()
+                }),
+                owner: Set("MoskalykA".into()),
+                server: Set(id.try_into().unwrap()), //ports: Some(form.ports.clone().unwrap())
+            })
+            .exec(&state.db)
             .await
             .unwrap();
 
-        match res.status() {
-            StatusCode::NOT_FOUND => {
-                HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
-            }
-            StatusCode::OK => {
-                let application_id: String = res.json().await.unwrap();
-                Applications::insert(applications::ActiveModel {
-                    image: Set(form.image.clone()),
-                    alias: Set(if form.alias.clone().is_empty() {
-                        "default".to_string()
-                    } else {
-                        form.alias.clone()
-                    }),
-                    owner: Set("MoskalykA".into()),
-                    server: Set(id),
-                    //ports: Some(form.ports.clone().unwrap()),
-                    ..Default::default()
-                });
+            //HttpResponse::Ok().json(Response {
+            //    error: false,
+            //    message: format!("The application {} has been created", application.last_insert_id),
+            //});
 
-                HttpResponse::Ok().json(Response {
-                    error: false,
-                    message: format!("The application {application_id} has been created"),
-                })
+            match server.start_container::<String>(&c.id, None).await {
+                Ok(_) => {
+                    //info!("The container {} has just undergone a start", c.id);
+
+                    HttpResponse::Ok().json(c.id)
+                }
+                Err(e) => HttpResponse::NotFound().json(Response {
+                    error: true,
+                    message: e.to_string(),
+                }),
             }
-            _ => unimplemented!(),
         }
-    } else {
-        HttpResponse::NotFound().json(Response {
+        Err(_) => HttpResponse::NotFound().json(Response {
             error: true,
-            message: "The server was not found".into(),
-        })
+            message: "There is an error when creating the application".into(),
+        }),
     }
 }
 
-#[post("/application/{id}/actions")]
+#[post("/application/{server_id}/actions/{id}")]
 pub async fn actions(
     state: web::Data<State>,
-    path: web::Path<i32>,
+    path: web::Path<(u32, String)>,
     form: web::Json<Actions>,
 ) -> impl Responder {
-    let id = path.into_inner();
-    let application = Applications::find_by_id(id).one(&state.db).await.unwrap();
-
-    if let Some(application) = application {
-        let server = Servers::find_by_id(application.server)
-            .one(&state.db)
-            .await
-            .unwrap();
-
-        if let Some(server) = server {
-            let client = reqwest::Client::new();
-            let res = client
-                .post(format!(
-                    "http://{}:{}/application/{}/actions",
-                    server.ip, server.port, id
-                ))
-                .json(&form)
-                .send()
-                .await
-                .unwrap();
-
-            match res.status() {
-                StatusCode::NOT_FOUND => {
-                    HttpResponse::NotFound().json(res.json::<Response>().await.unwrap())
-                }
-                _ => HttpResponse::Ok().json(res.json::<Response>().await.unwrap()),
-            }
-        } else {
-            HttpResponse::NotFound().json(Response {
+    let (server_id, id) = path.into_inner();
+    let server = match state.servers.get(&server_id) {
+        Some(s) => s,
+        None => {
+            return HttpResponse::NotFound().json(Response {
                 error: true,
-                message: format!("The {} server does not exist", application.server),
+                message: "The server does not exist".into(),
+            });
+        }
+    };
+
+    match server
+        .inspect_container(&id, Some(InspectContainerOptions { size: false }))
+        .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            return HttpResponse::NotFound().json(Response {
+                error: true,
+                message: format!("The {} container does not exist", id),
             })
         }
-    } else {
-        HttpResponse::NotFound().json(Response {
-            error: true,
-            message: format!("The {id} application does not exist"),
-        })
-    }
+    };
+
+    match form.action.as_str() {
+        "start" => match server
+            .start_container(&id, None::<StartContainerOptions<String>>)
+            .await
+        {
+            Ok(_) => {}
+            Err(e) => return HttpResponse::NotFound().body(e.to_string()),
+        },
+        "restart" => match server.restart_container(&id, None).await {
+            Ok(_) => {}
+            Err(e) => return HttpResponse::NotFound().body(e.to_string()),
+        },
+        "stop" => match server.stop_container(&id, None).await {
+            Ok(_) => {}
+            Err(e) => return HttpResponse::NotFound().body(e.to_string()),
+        },
+        _ => {
+            return HttpResponse::NotFound().json(Response {
+                error: true,
+                message: format!("The operation {} does not exist", form.action),
+            })
+        }
+    };
+
+    //info!(
+    //    "The container {} has just undergone a {}",
+    //    id, form.action
+    //);
+
+    HttpResponse::Ok().json(Response {
+        error: false,
+        message: format!(
+            "The operation that allowed the {} of the {} container worked",
+            form.action, id
+        ),
+    })
 }
