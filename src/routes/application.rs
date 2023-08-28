@@ -45,7 +45,8 @@ pub async fn create(
     form: web::Json<Form>,
 ) -> impl Responder {
     let id = path.into_inner();
-    let server = match state.servers.get(&id) {
+    let servers = state.servers.lock().await;
+    let server = match servers.get(&id) {
         Some(s) => s,
         None => {
             return HttpResponse::NotFound().json(Response {
@@ -142,7 +143,8 @@ pub async fn actions(
     form: web::Json<Actions>,
 ) -> impl Responder {
     let (server_id, id) = path.into_inner();
-    let server = match state.servers.get(&server_id) {
+    let servers = state.servers.lock().await;
+    let server = match servers.get(&server_id) {
         Some(s) => s,
         None => {
             return HttpResponse::NotFound().json(Response {

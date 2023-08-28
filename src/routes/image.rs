@@ -18,7 +18,8 @@ pub async fn download(
     form: web::Json<Form>,
 ) -> impl Responder {
     let id = path.into_inner();
-    let server = match state.servers.get(&id) {
+    let servers = state.servers.lock().await;
+    let server = match servers.get(&id) {
         Some(s) => s,
         None => {
             return HttpResponse::NotFound().json(Response {
@@ -62,7 +63,8 @@ pub async fn download(
 #[get("/image/{id}/version/{name}")]
 pub async fn version(state: web::Data<State>, path: web::Path<(u32, String)>) -> impl Responder {
     let (id, name) = path.into_inner();
-    let server = match state.servers.get(&id) {
+    let servers = state.servers.lock().await;
+    let server = match servers.get(&id) {
         Some(s) => s,
         None => {
             return HttpResponse::NotFound().json(Response {

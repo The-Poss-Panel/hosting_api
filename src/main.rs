@@ -1,20 +1,21 @@
 mod routes;
 
-use std::collections::HashMap;
-
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use bollard::{Docker, API_DEFAULT_VERSION};
 use entity::prelude::Servers;
 use env_logger::Builder;
+use futures_util::lock::Mutex;
 use log::LevelFilter;
 use routes::{application, applications, image, images, server, servers};
 use sea_orm::{Database, DatabaseConnection, EntityTrait};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct State {
     db: DatabaseConnection,
-    servers: HashMap<u32, Docker>,
+    servers: Arc<Mutex<HashMap<u32, Docker>>>,
 }
 
 #[actix_web::main]
@@ -41,7 +42,10 @@ async fn main() -> std::io::Result<()> {
         );
     }
 
-    let state = State { db, servers };
+    let state = State {
+        db,
+        servers: Arc::new(Mutex::new(servers)),
+    };
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -51,6 +55,7 @@ async fn main() -> std::io::Result<()> {
             .service(application::actions)
             .service(applications::get)
             .service(server::find)
+            .service(server::create)
             .service(server::modify)
             .service(servers::get)
             .service(image::download)

@@ -6,7 +6,8 @@ use hosting_types::Response;
 #[get("/images/{id}")]
 pub async fn get(state: web::Data<State>, path: web::Path<u32>) -> impl Responder {
     let id = path.into_inner();
-    let server = match state.servers.get(&id) {
+    let servers = state.servers.lock().await;
+    let server = match servers.get(&id) {
         Some(s) => s,
         None => {
             return HttpResponse::NotFound().json(Response {
