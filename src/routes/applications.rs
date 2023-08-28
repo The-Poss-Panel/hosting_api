@@ -1,10 +1,14 @@
-use crate::types::Application;
+use crate::State;
 use actix_web::{get, web, HttpResponse, Responder};
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::Surreal;
+use entity::prelude::Applications;
+use sea_orm::EntityTrait;
 
 #[get("/applications")]
-pub async fn get(client: web::Data<Surreal<Client>>) -> impl Responder {
-    let applications: Vec<Application> = client.select("applications").await.unwrap();
+pub async fn get(state: web::Data<State>) -> impl Responder {
+    let applications = Applications::find()
+        .into_json()
+        .all(&state.db)
+        .await
+        .unwrap(); // handle error
     HttpResponse::Ok().json(applications)
 }

@@ -1,11 +1,14 @@
-use crate::types::{Application, Server};
+use crate::State;
 use actix_web::{get, post, web, HttpResponse, Responder};
 use bollard::service::PortBinding;
+use entity::{
+    applications,
+    prelude::{Applications, Servers},
+};
 use hosting_types::Response;
 use reqwest::StatusCode;
+use sea_orm::{EntityTrait, Set};
 use serde::{Deserialize, Serialize};
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::Surreal;
 
 #[derive(Serialize, Deserialize)]
 pub struct Form {
@@ -20,11 +23,14 @@ pub struct Actions {
 }
 
 #[get("/application/{id}")]
-pub async fn find(client: web::Data<Surreal<Client>>, id: web::Path<String>) -> impl Responder {
-    let application: Option<Application> = client
-        .select(("applications", id.to_string()))
+pub async fn find(state: web::Data<State>, path: web::Path<i32>) -> impl Responder {
+    let id = path.into_inner();
+    let application = Applications::find_by_id(id)
+        .into_json()
+        .one(&state.db)
         .await
         .unwrap();
+
     if let Some(application) = application {
         HttpResponse::Ok().json(&application)
     } else {
@@ -34,11 +40,13 @@ pub async fn find(client: web::Data<Surreal<Client>>, id: web::Path<String>) -> 
 
 #[post("/application/{id}")]
 pub async fn create(
-    surreal: web::Data<Surreal<Client>>,
-    id: web::Path<String>,
+    state: web::Data<State>,
+    path: web::Path<i32>,
     form: web::Json<Form>,
 ) -> impl Responder {
-    let server: Option<Server> = surreal.select(("servers", id.clone())).await.unwrap();
+    let id = path.into_inner();
+    let server = Servers::find_by_id(id).one(&state.db).await.unwrap();
+
     if let Some(server) = server {
         let client = reqwest::Client::new();
         let res = client
@@ -54,22 +62,18 @@ pub async fn create(
             }
             StatusCode::OK => {
                 let application_id: String = res.json().await.unwrap();
-                let application: Application = surreal
-                    .create("applications")
-                    .content(Application {
-                        id: application_id.clone(),
-                        image: form.image.clone(),
-                        alias: if form.alias.clone().is_empty() {
-                            "default".to_string()
-                        } else {
-                            form.alias.clone()
-                        },
-                        owner: "MoskalykA".into(),
-                        server: id.clone(),
-                        ports: Some(form.ports.clone().unwrap()),
-                    })
-                    .await
-                    .unwrap();
+                Applications::insert(applications::ActiveModel {
+                    image: Set(form.image.clone()),
+                    alias: Set(if form.alias.clone().is_empty() {
+                        "default".to_string()
+                    } else {
+                        form.alias.clone()
+                    }),
+                    owner: Set("MoskalykA".into()),
+                    server: Set(id),
+                    //ports: Some(form.ports.clone().unwrap()),
+                    ..Default::default()
+                });
 
                 HttpResponse::Ok().json(Response {
                     error: false,
@@ -88,17 +92,19 @@ pub async fn create(
 
 #[post("/application/{id}/actions")]
 pub async fn actions(
-    client: web::Data<Surreal<Client>>,
-    id: web::Path<String>,
+    state: web::Data<State>,
+    path: web::Path<i32>,
     form: web::Json<Actions>,
 ) -> impl Responder {
-    let application: Option<Application> =
-        client.select(("applications", id.clone())).await.unwrap();
+    let id = path.into_inner();
+    let application = Applications::find_by_id(id).one(&state.db).await.unwrap();
+
     if let Some(application) = application {
-        let server: Option<Server> = client
-            .select(("servers", application.server.clone()))
+        let server = Servers::find_by_id(application.server)
+            .one(&state.db)
             .await
             .unwrap();
+
         if let Some(server) = server {
             let client = reqwest::Client::new();
             let res = client

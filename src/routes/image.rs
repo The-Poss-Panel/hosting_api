@@ -1,10 +1,10 @@
-use crate::types::Server;
+use crate::State;
 use actix_web::{get, post, web, HttpResponse, Responder};
+use entity::prelude::Servers;
 use hosting_types::Response;
 use reqwest::StatusCode;
+use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
-use surrealdb::engine::remote::ws::Client;
-use surrealdb::Surreal;
 
 #[derive(Deserialize, Serialize)]
 pub struct Form {
@@ -14,11 +14,13 @@ pub struct Form {
 
 #[post("/image/{id}")]
 pub async fn download(
-    client: web::Data<Surreal<Client>>,
-    id: web::Path<String>,
+    state: web::Data<State>,
+    path: web::Path<i32>,
     form: web::Json<Form>,
 ) -> impl Responder {
-    let server: Option<Server> = client.select(("servers", id.to_string())).await.unwrap();
+    let id = path.into_inner();
+    let server = Servers::find_by_id(id).one(&state.db).await.unwrap();
+
     if let Some(server) = server {
         let client = reqwest::Client::new();
         let res = client
@@ -50,17 +52,16 @@ pub async fn download(
 }
 
 #[get("/image/{id}/version/{name}")]
-pub async fn version(
-    client: web::Data<Surreal<Client>>,
-    param: web::Path<(String, String)>,
-) -> impl Responder {
-    let server: Option<Server> = client.select(("servers", param.0.clone())).await.unwrap();
+pub async fn version(state: web::Data<State>, path: web::Path<(i32, String)>) -> impl Responder {
+    let (id, name) = path.into_inner();
+    let server = Servers::find_by_id(id).one(&state.db).await.unwrap();
+
     if let Some(server) = server {
         let client = reqwest::Client::new();
         let res = client
             .get(format!(
                 "http://{}:{}/image/{}/version",
-                server.ip, server.port, param.1
+                server.ip, server.port, name
             ))
             .send()
             .await

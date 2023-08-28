@@ -1,47 +1,56 @@
 mod routes;
+
 use actix_cors::Cors;
+use actix_web::{web, App, HttpServer};
+use bollard::Docker;
+use entity::prelude::*;
 use env_logger::Builder;
 use log::LevelFilter;
 use routes::{application, applications, image, images, server, servers};
+use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
+use std::collections::HashMap;
 
-mod types;
-
-use actix_web::{web, App, HttpServer};
-use surrealdb::{engine::remote::ws::Ws, opt::auth::Root, Surreal};
-use types::Server;
+#[derive(Clone)]
+pub struct State {
+    db: DatabaseConnection,
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();
 
-    let client = Surreal::new::<Ws>("localhost:8000").await.unwrap();
-    client
-        .signin(Root {
-            username: "root",
-            password: "root",
-        })
-        .await
-        .unwrap();
+    let db: DatabaseConnection =
+        Database::connect("mysql://root:YOUR_ROOT_PASSWORD_HERE@localhost:40000/poss")
+            .await
+            .unwrap();
 
-    client.use_ns("test").use_db("test").await.unwrap();
+    Applications::delete_many().exec(&db).await.unwrap();
 
-    client.delete("applications").await.unwrap();
-    client.delete("servers").await.unwrap();
-    let _server: Server = client
-        .create("servers")
-        .content(Server::new(
-            "127.0.0.1".into(),
-            8082,
-            "test".into(),
-            "MoskalykA".into(),
-        ))
-        .await
-        .unwrap();
+    Servers::delete_many().exec(&db).await.unwrap();
 
+    entity::servers::ActiveModel {
+        ip: Set("127.0.0.1".to_string()),
+        port: Set(8082),
+        name: Set("test".to_string()),
+        owner: Set("MoskalykA".to_string()),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let mut servers: HashMap<String, Docker> = HashMap::new();
+    servers.insert(
+        "test".to_string(),
+        Docker::connect_with_local_defaults().unwrap(),
+    );
+
+    let state = State { db };
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
-            .app_data(web::Data::new(client.clone()))
+            .app_data(web::Data::new(state.clone()))
+            .app_data(web::Data::new(servers.clone()))
             .service(application::find)
             .service(application::create)
             .service(application::actions)
