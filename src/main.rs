@@ -52,6 +52,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(state.clone()))
             .service(application::find)
             .service(application::create)
+            .service(application::_state)
             .service(application::actions)
             .service(applications::get)
             .service(server::find)

@@ -136,6 +136,29 @@ pub async fn create(
     }
 }
 
+#[get("/application/{server_id}/state/{id}")]
+pub async fn _state(
+    state: web::Data<State>,
+    path: web::Path<(u32, String)>
+) -> impl Responder {
+    let (server_id, id) = path.into_inner();
+    let servers = state.servers.lock().await;
+    let server = match servers.get(&server_id) {
+        Some(s) => s,
+        None => {
+            return HttpResponse::NotFound().json(Response {
+                error: true,
+                message: "The server does not exist".into(),
+            });
+        }
+    };
+
+    match server.inspect_container(&id, None).await {
+        Ok(i) => HttpResponse::Ok().json(i.state),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string())
+    }
+}
+
 #[post("/application/{server_id}/actions/{id}")]
 pub async fn actions(
     state: web::Data<State>,
