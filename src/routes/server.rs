@@ -1,6 +1,6 @@
 use crate::State;
-use actix_web::{get, patch, post, web, HttpResponse, Responder};
-use bollard::{Docker, API_DEFAULT_VERSION};
+use actix_web::{HttpResponse, Responder, get, patch, post, web};
+use bollard::{API_DEFAULT_VERSION, Docker};
 use entity::{prelude::Servers, servers};
 use hosting_types::Response;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};

@@ -1,5 +1,5 @@
 use crate::State;
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, web};
 use entity::prelude::Servers;
 use sea_orm::EntityTrait;
 

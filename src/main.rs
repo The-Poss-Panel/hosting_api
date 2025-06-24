@@ -1,8 +1,8 @@
 mod routes;
 
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer};
-use bollard::{Docker, API_DEFAULT_VERSION};
+use actix_web::{App, HttpServer, web};
+use bollard::{API_DEFAULT_VERSION, Docker};
 use entity::prelude::Servers;
 use env_logger::Builder;
 use futures_util::lock::Mutex;
@@ -12,10 +12,10 @@ use sea_orm::{Database, DatabaseConnection, EntityTrait};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Clone)]
+#[derive(Clone)] // todo: useful ?
 pub struct State {
     db: DatabaseConnection,
-    servers: Arc<Mutex<HashMap<u32, Docker>>>,
+    servers: Arc<Mutex<HashMap<u32, Docker>>>, // todo: maybe too slow ?
 }
 
 #[actix_web::main]
@@ -23,7 +23,7 @@ async fn main() -> std::io::Result<()> {
     Builder::new().filter_level(LevelFilter::Info).init();
 
     let db: DatabaseConnection =
-        Database::connect("mysql://root:YOUR_ROOT_PASSWORD_HERE@localhost:40000/poss")
+        Database::connect("mysql://root:YOUR_ROOT_PASSWORD_HERE@localhost:40000/poss") // todo: use .env
             .await
             .unwrap();
 
@@ -32,7 +32,7 @@ async fn main() -> std::io::Result<()> {
     for (index, server) in s.iter().enumerate() {
         let a: u32 = index.try_into().unwrap();
         servers.insert(
-            a + 1,
+            a + 1, // todo: wtf
             Docker::connect_with_http(
                 &format!("tcp://{}:{}", &server.ip, &server.port),
                 4,
@@ -44,8 +44,9 @@ async fn main() -> std::io::Result<()> {
 
     let state = State {
         db,
-        servers: Arc::new(Mutex::new(servers)),
+        servers: Arc::new(Mutex::new(servers)), // todo: maybe too slow ?
     };
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())

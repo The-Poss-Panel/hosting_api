@@ -1,6 +1,6 @@
 use crate::State;
-use actix_web::{get, post, web, HttpResponse, Responder};
-use bollard::image::CreateImageOptions;
+use actix_web::{HttpResponse, Responder, get, post, web};
+use bollard::query_parameters::CreateImageOptionsBuilder;
 use futures_util::TryStreamExt;
 use hosting_types::Response;
 use serde::{Deserialize, Serialize};
@@ -36,16 +36,12 @@ pub async fn download(
         });
     };
 
+    let options = CreateImageOptionsBuilder::new()
+        .from_image(&form.name)
+        .tag(&form.version.clone().unwrap_or_else(|| "latest".to_string())); // todo: maybe just str
+
     match server
-        .create_image(
-            Some(CreateImageOptions::<String> {
-                from_image: form.name.clone(),
-                tag: form.version.clone().unwrap_or_else(|| "latest".to_string()),
-                ..Default::default()
-            }),
-            None,
-            None,
-        )
+        .create_image(Some(options.build()), None, None)
         .try_collect::<Vec<_>>()
         .await
     {

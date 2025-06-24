@@ -1,11 +1,16 @@
 use crate::State;
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use bollard::{
-    container::{Config, CreateContainerOptions, InspectContainerOptions, StartContainerOptions},
+    query_parameters::{
+        CreateContainerOptionsBuilder, InspectContainerOptions, RestartContainerOptions,
+        StartContainerOptions, StopContainerOptions,
+    },
+    secret::ContainerCreateBody,
     service::{HostConfig, PortBinding},
 };
 use entity::{applications, prelude::Applications};
 use hosting_types::Response;
+use log::info;
 use sea_orm::{EntityTrait, Set};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -29,7 +34,7 @@ pub async fn find(state: web::Data<State>, path: web::Path<String>) -> impl Resp
         .into_json()
         .one(&state.db)
         .await
-        .unwrap();
+        .unwrap(); // todo: handle error
 
     if let Some(application) = application {
         HttpResponse::Ok().json(&application)
@@ -57,14 +62,14 @@ pub async fn create(
     };
 
     let split: Vec<&str> = form.image.split(':').collect::<Vec<&str>>();
-    let name = split.first().unwrap();
+    let name = split.first().unwrap(); // todo: handle error
     match server.inspect_image(name).await {
         Ok(_) => {}
         Err(_) => {
             return HttpResponse::NotFound().json(Response {
                 error: true,
                 message: "The image has not been downloaded".into(),
-            })
+            });
         }
     };
 
@@ -77,13 +82,11 @@ pub async fn create(
         None
     };
 
+    let options = CreateContainerOptionsBuilder::new().name(&form.alias);
     match server
         .create_container(
-            Some(CreateContainerOptions {
-                name: form.alias.clone(),
-                platform: None,
-            }),
-            Config::<String> {
+            Some(options.build()),
+            ContainerCreateBody {
                 image: Some(form.image.clone()),
                 host_config: Some(HostConfig {
                     port_bindings,
@@ -95,7 +98,7 @@ pub async fn create(
         .await
     {
         Ok(c) => {
-            //info!("The {} container has just been created", c.id);
+            info!("The {} container has just been created", c.id);
 
             let _ = Applications::insert(applications::ActiveModel {
                 id: Set(c.id.clone()),
@@ -106,20 +109,18 @@ pub async fn create(
                     form.alias.clone()
                 }),
                 owner: Set("MoskalykA".into()),
-                server: Set(id.try_into().unwrap()), //ports: Some(form.ports.clone().unwrap())
+                server: Set(id.try_into().unwrap()),
             })
             .exec(&state.db)
             .await
-            .unwrap();
+            .unwrap(); // todo: handle error
 
-            //HttpResponse::Ok().json(Response {
-            //    error: false,
-            //    message: format!("The application {} has been created", application.last_insert_id),
-            //});
-
-            match server.start_container::<String>(&c.id, None).await {
+            match server
+                .start_container(&c.id, None::<StartContainerOptions>)
+                .await
+            {
                 Ok(_) => {
-                    //info!("The container {} has just undergone a start", c.id);
+                    info!("The container {} has just undergone a start", c.id);
 
                     HttpResponse::Ok().json(c.id)
                 }
@@ -137,10 +138,7 @@ pub async fn create(
 }
 
 #[get("/application/{server_id}/state/{id}")]
-pub async fn _state(
-    state: web::Data<State>,
-    path: web::Path<(u32, String)>
-) -> impl Responder {
+pub async fn _state(state: web::Data<State>, path: web::Path<(u32, String)>) -> impl Responder {
     let (server_id, id) = path.into_inner();
     let servers = state.servers.lock().await;
     let server = match servers.get(&server_id) {
@@ -153,9 +151,12 @@ pub async fn _state(
         }
     };
 
-    match server.inspect_container(&id, None).await {
+    match server
+        .inspect_container(&id, None::<InspectContainerOptions>)
+        .await
+    {
         Ok(i) => HttpResponse::Ok().json(i.state),
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string())
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
 
@@ -181,28 +182,34 @@ pub async fn actions(
         .inspect_container(&id, Some(InspectContainerOptions { size: false }))
         .await
     {
-        Ok(_) => {}
+        Ok(_) => {} // todo: another methods ?
         Err(_) => {
             return HttpResponse::NotFound().json(Response {
                 error: true,
                 message: format!("The {} container does not exist", id),
-            })
+            });
         }
     };
 
     match form.action.as_str() {
         "start" => match server
-            .start_container(&id, None::<StartContainerOptions<String>>)
+            .start_container(&id, None::<StartContainerOptions>)
             .await
         {
             Ok(_) => {}
             Err(e) => return HttpResponse::NotFound().body(e.to_string()),
         },
-        "restart" => match server.restart_container(&id, None).await {
+        "restart" => match server
+            .restart_container(&id, None::<RestartContainerOptions>)
+            .await
+        {
             Ok(_) => {}
             Err(e) => return HttpResponse::NotFound().body(e.to_string()),
         },
-        "stop" => match server.stop_container(&id, None).await {
+        "stop" => match server
+            .stop_container(&id, None::<StopContainerOptions>)
+            .await
+        {
             Ok(_) => {}
             Err(e) => return HttpResponse::NotFound().body(e.to_string()),
         },
@@ -210,14 +217,11 @@ pub async fn actions(
             return HttpResponse::NotFound().json(Response {
                 error: true,
                 message: format!("The operation {} does not exist", form.action),
-            })
+            });
         }
     };
 
-    //info!(
-    //    "The container {} has just undergone a {}",
-    //    id, form.action
-    //);
+    info!("The container {} has just undergone a {}", id, form.action);
 
     HttpResponse::Ok().json(Response {
         error: false,

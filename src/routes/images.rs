@@ -1,6 +1,6 @@
 use crate::State;
-use actix_web::{get, web, HttpResponse, Responder};
-use bollard::image::ListImagesOptions;
+use actix_web::{HttpResponse, Responder, get, web};
+use bollard::query_parameters::ListImagesOptionsBuilder;
 use hosting_types::Response;
 
 #[get("/images/{id}")]
@@ -17,13 +17,8 @@ pub async fn get(state: web::Data<State>, path: web::Path<u32>) -> impl Responde
         }
     };
 
-    match server
-        .list_images(Some(ListImagesOptions::<String> {
-            all: true,
-            ..Default::default()
-        }))
-        .await
-    {
+    let options = ListImagesOptionsBuilder::new().all(true);
+    match server.list_images(Some(options.build())).await {
         Ok(images) => HttpResponse::Ok().json(images),
         Err(_) => HttpResponse::NotFound().json(Response {
             error: false,

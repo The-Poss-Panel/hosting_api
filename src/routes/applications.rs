@@ -1,5 +1,5 @@
 use crate::State;
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, web};
 use entity::prelude::Applications;
 use sea_orm::EntityTrait;
 
@@ -9,6 +9,7 @@ pub async fn get(state: web::Data<State>) -> impl Responder {
         .into_json()
         .all(&state.db)
         .await
-        .unwrap(); // handle error
+        .unwrap(); // todo: handle error
+
     HttpResponse::Ok().json(applications)
 }
